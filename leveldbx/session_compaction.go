@@ -24,7 +24,10 @@ func (s *session) flushMemdb(rec *sessionRecord, mdb *memdb.DB, maxLevel int) (i
 	// Create sorted table.
 	iter := mdb.NewIterator(nil)
 	defer iter.Release()
-	t, n, err := s.tops.createFrom(iter)
+	
+	// We wanna drop expired items! TODO: what about counting the dropped ones???
+	niter := &expireIterator{iter,s.aexp}
+	t, n, err := s.tops.createFrom(niter)
 	if err != nil {
 		return 0, err
 	}

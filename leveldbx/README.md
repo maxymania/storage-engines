@@ -6,6 +6,10 @@
 This version of Go-Leveldb is modified to include experimental and
 useful features, that are not the goal of the original project.
 
+Feature(s):
+
+* [X] Auto expiration base on pluggable Expiration modules.
+
 # License
 ```
 Copyright 2012 Suryandaru Triandana <syndtr@gmail.com>

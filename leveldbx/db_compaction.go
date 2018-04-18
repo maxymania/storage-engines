@@ -482,6 +482,10 @@ func (b *tableCompactionBuilder) run(cnt *compactionTransactCounter) error {
 			}
 
 			switch {
+			case kt != keyTypeDel && !b.s.aexp.Retain(iter.Value()):
+				// Extension:
+				//   Expired key value pairs should be dropped.
+				fallthrough
 			case lastSeq <= b.minSeq:
 				// Dropped because newer entry for same user key exist
 				fallthrough // (A)
@@ -508,6 +512,11 @@ func (b *tableCompactionBuilder) run(cnt *compactionTransactCounter) error {
 			hasLastUkey = false
 			lastUkey = lastUkey[:0]
 			lastSeq = keyMaxSeq
+			if !b.s.aexp.Retain(iter.Value()) {
+				// Experimental: Corrupted, expired values should be dropped as well.
+				b.dropCnt++
+				continue
+			}
 			b.kerrCnt++
 		}
 

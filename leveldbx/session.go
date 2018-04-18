@@ -56,10 +56,12 @@ type session struct {
 	stCompPtrs []internalKey // compaction pointers; need external synchronization
 	stVersion  *version      // current version
 	vmu        sync.Mutex
+	
+	aexp AutoExpire          // Auto-Expiration filter
 }
 
 // Creates new initialized session instance.
-func newSession(stor storage.Storage, o *opt.Options) (s *session, err error) {
+func newSession(stor storage.Storage, o *opt.Options, aexp AutoExpire) (s *session, err error) {
 	if stor == nil {
 		return nil, os.ErrInvalid
 	}
@@ -71,6 +73,7 @@ func newSession(stor storage.Storage, o *opt.Options) (s *session, err error) {
 		stor:     newIStorage(stor),
 		storLock: storLock,
 		fileRef:  make(map[int64]int),
+		aexp: getAutoExpire(aexp),
 	}
 	s.setOptions(o)
 	s.tops = newTableOps(s)

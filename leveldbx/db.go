@@ -167,8 +167,8 @@ func openDB(s *session) (*DB, error) {
 //
 // The returned DB instance is safe for concurrent use.
 // The DB must be closed after use, by calling Close method.
-func Open(stor storage.Storage, o *opt.Options) (db *DB, err error) {
-	s, err := newSession(stor, o)
+func Open(stor storage.Storage, o *opt.Options, aexp AutoExpire) (db *DB, err error) {
+	s, err := newSession(stor, o, aexp)
 	if err != nil {
 		return
 	}
@@ -210,12 +210,12 @@ func Open(stor storage.Storage, o *opt.Options) (db *DB, err error) {
 //
 // The returned DB instance is safe for concurrent use.
 // The DB must be closed after use, by calling Close method.
-func OpenFile(path string, o *opt.Options) (db *DB, err error) {
+func OpenFile(path string, o *opt.Options, aexp AutoExpire) (db *DB, err error) {
 	stor, err := storage.OpenFile(path, o.GetReadOnly())
 	if err != nil {
 		return
 	}
-	db, err = Open(stor, o)
+	db, err = Open(stor, o, aexp)
 	if err != nil {
 		stor.Close()
 	} else {
@@ -231,8 +231,8 @@ func OpenFile(path string, o *opt.Options) (db *DB, err error) {
 //
 // The returned DB instance is safe for concurrent use.
 // The DB must be closed after use, by calling Close method.
-func Recover(stor storage.Storage, o *opt.Options) (db *DB, err error) {
-	s, err := newSession(stor, o)
+func Recover(stor storage.Storage, o *opt.Options, aexp AutoExpire) (db *DB, err error) {
+	s, err := newSession(stor, o, aexp)
 	if err != nil {
 		return
 	}
@@ -260,12 +260,12 @@ func Recover(stor storage.Storage, o *opt.Options) (db *DB, err error) {
 //
 // The returned DB instance is safe for concurrent use.
 // The DB must be closed after use, by calling Close method.
-func RecoverFile(path string, o *opt.Options) (db *DB, err error) {
+func RecoverFile(path string, o *opt.Options, aexp AutoExpire) (db *DB, err error) {
 	stor, err := storage.OpenFile(path, false)
 	if err != nil {
 		return
 	}
-	db, err = Recover(stor, o)
+	db, err = Recover(stor, o, aexp)
 	if err != nil {
 		stor.Close()
 	} else {
