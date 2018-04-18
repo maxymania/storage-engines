@@ -3,4 +3,4 @@ Open Storage Engines
 
 ### Sub-Projects
 
-* [https://godoc.org/github.com/maxymania/storage-engines/leveldbx](Leveldbx)
+* [Leveldbx](https://godoc.org/github.com/maxymania/storage-engines/leveldbx)
