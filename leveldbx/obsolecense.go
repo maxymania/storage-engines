@@ -27,9 +27,22 @@ For more information, please refer to <http://unlicense.org/>
 
 package leveldb
 
+/*
+Auto-Expire offers a function, that decides, whether or not a record should be dropped.
+*/
 type AutoExpire interface{
+	// This method is called on every value, deciding whether or not to drop it.
+	//
+	// If the method returns true, the database will retain the value, otherwise
+	// it will be dropped.
+	//
+	// Good practices too implement it:
+	//  - Perform as fast as possible. The slower the function works, the slower
+	//    the compaction will be, an the whole database will be sluggish.
+	//  - If in doubt, return true.
 	Retain(b []byte) bool
 }
+
 type defaultAutoExpire struct{}
 func (defaultAutoExpire) Retain(b []byte) bool { return true }
 func getAutoExpire(a AutoExpire) AutoExpire {
