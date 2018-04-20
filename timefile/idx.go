@@ -103,7 +103,7 @@ func (s *Store) getfile(k interface{}) Releaser {
 	if e!=nil { return nil }
 	r := new(iFile)
 	r.File = f
-	r.length,e = f.Seek(2,0)
+	r.length,e = f.Seek(0,2)
 	if e!=nil {
 		f.Close()
 		return nil
