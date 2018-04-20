@@ -21,7 +21,7 @@ SOFTWARE.
 */
 
 
-package indexblob
+package timefile
 
 import "time"
 
