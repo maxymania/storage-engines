@@ -77,7 +77,8 @@ func (s *Store) insert_1(k, v []byte, expireAt uint64) error {
 	pos,err := ce.value.(*iFile).AppendMz(v,s.MaxSizePerFile)
 	if err!=nil { return err }
 	
-	return s.DB.Put(k,storeHeader{tfn,pos,int32(len(v))}.encode(),wopt)
+	// return s.DB.Put(k,storeHeader{tfn,pos,int32(len(v))}.encode(),wopt)
+	return s.indexPut(k,storeHeader{tfn,pos,int32(len(v))},wopt)
 }
 
 

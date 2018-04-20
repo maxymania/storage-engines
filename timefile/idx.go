@@ -49,13 +49,21 @@ type Unwrapper_os_File interface {
 	Unwrap_os_File() *os.File
 }
 
+var readerPool = sync.Pool{New: func() interface{} { return new(bytes.Reader) }}
+func reclaimReader(b *bytes.Reader) {
+	b.Reset(nil)
+	readerPool.Put(b)
+}
+
 type storeHeader struct{
 	FileID uint64
 	Offset int64
 	Length int32
 }
 func (s *storeHeader) decode(b []byte) error {
-	r := bytes.NewReader(b)
+	r := readerPool.Get().(*bytes.Reader)
+	r.Reset(b)
+	defer reclaimReader(r)
 	return binary.Read(r,binary.BigEndian,s)
 }
 func (s storeHeader) encode() []byte {
@@ -143,6 +151,18 @@ func (s *Store) CleanupInstance() {
 
 var wopt = &opt.WriteOptions{ Sync:false, }
 
+var bufferPool = sync.Pool{ New: func() interface{} { return new(bytes.Buffer) } }
+func reclaimBuffer(b *bytes.Buffer) {
+	b.Reset()
+	bufferPool.Put(b)
+}
+
+func (s *Store) indexPut(k []byte, v storeHeader, o *opt.WriteOptions) error {
+	buf := bufferPool.Get().(*bytes.Buffer)
+	defer reclaimBuffer(buf)
+	binary.Write(buf,binary.BigEndian,v)
+	return s.DB.Put(k,buf.Bytes(),o)
+}
 func (s *Store) Insert(k, v []byte, expireAt uint64) error {
 	return s.insert_2(k, v, expireAt)
 }
@@ -185,7 +205,8 @@ func (s *Store) insert_2(k, v []byte, expireAt uint64) error {
 		}
 		if err!=nil { return err }
 		
-		return s.DB.Put(k,storeHeader{tfn,pos,int32(len(v))}.encode(),wopt)
+		//return s.DB.Put(k,storeHeader{tfn,pos,int32(len(v))}.encode(),wopt)
+		return s.indexPut(k,storeHeader{tfn,pos,int32(len(v))},wopt)
 	}
 	panic("unreachable")
 }
