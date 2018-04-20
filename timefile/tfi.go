@@ -35,6 +35,11 @@ var allocator = []byte("alloc")
 
 const secDay uint64 = 60*60*24
 
+func trunci(t,mod uint64) uint64 {
+	if mod==0 { return t }
+	t -= t%mod
+	return t
+}
 
 type Ebool bool
 func (e Ebool) Error() string {
@@ -44,6 +49,9 @@ func (e Ebool) Error() string {
 const (
 	EFalse = Ebool(false)
 	ECorrupted = Ebool(true)
+)
+var (
+	EOptionsExhausted = fmt.Errorf("EOptionsExhausted")
 )
 
 
@@ -145,6 +153,54 @@ func (a *Allocator) AllocateTimeFile(expireAt uint64) (uint64,error) {
 	if u,err := a.check(expireAt); err==nil {  return u,nil }
 	return a.alloc(expireAt)
 }
+
+/*
+This method allocates another time-file. This should be used, if the current time-file cannot be used for
+insertion.
+*/
+func (a *Allocator) GrabAnotherFile(expireAt, currentFile uint64) (fi uint64,err error) {
+	return a.grabAnother_2(expireAt,currentFile)
+}
+// The implementation behind a.GrabAnotherFile(...)
+func (a *Allocator) grabAnother_2(expireAt, currentFile uint64) (fi uint64,err error) {
+	if expireAt <= current { return 0,EFalse }
+	var err2 error
+	
+	err = a.DB.Batch(func(tx *bolt.Tx) error {
+		var expb [8]byte
+		bkt,err := tx.CreateBucketIfNotExists(allocator)
+		if err!=nil { return err }
+		defer a.erase(bkt,256) /* Remove outdated entries on every update! */
+		
+		cur := bkt.Cursor()
+		
+		binary.BigEndian.PutUint64(expb[:],expireAt)
+		
+		/* Check, if there is already an earlier file. (1) */
+		k,_ := cur.Seek(expb[:])
+		if len(k)<8 { goto acquire }
+		
+		fi = binary.BigEndian.Uint64(k)
+		if fi >= expireAt && fi < currentFile { return nil }
+		
+		acquire:
+		/* Lemma: fi is non-existent or fi >= currentFile */
+		
+		/* (1) Choose one second earlier than the current file. */
+		fi = currentFile-1
+		
+		/* (2) If this is earlier than expiration, Fail! */
+		if fi < expireAt { err2 = EOptionsExhausted; return nil }
+		
+		binary.BigEndian.PutUint64(expb[:],fi)
+		
+		return bkt.Put(expb[:],expb[:])
+	})
+	if err==nil { err = err2 }
+	if err==nil && fi==currentFile { panic("Invalid!") }
+	return
+}
+
 func (a *Allocator) Cleanup(n int){
 	a.DB.Batch(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket(allocator)

@@ -1,0 +1,83 @@
+/*
+Copyright (c) 2018 Simon Schmidt
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+/* Code contained within this file is not used by now. */
+
+// The first implementation behind a.GrabAnotherFile(...)
+// unused for now...
+func (a *Allocator) grabAnother_1(expireAt, currentFile uint64) (fi uint64,err error) {
+	if expireAt <= current { return 0,EFalse }
+	
+	err = a.DB.Batch(func(tx *bolt.Tx) error {
+		var expb [8]byte
+		bkt,err := tx.CreateBucketIfNotExists(allocator)
+		if err!=nil { return err }
+		defer a.erase(bkt,256) /* Remove outdated entries on every update! */
+		
+		cur := bkt.Cursor()
+		
+		fi = currentFile+1
+		
+		binary.BigEndian.PutUint64(expb[:],fi)
+		
+		k,_ := cur.Seek(expb[:])
+		if len(k)<8 {
+			// No later time-file found.
+			// use li (currentFile + 1 (expires one second later) )
+			return bkt.Put(expb[:],expb[:])
+			//k,_ = cur.Last()
+		}
+		li := binary.BigEndian.Uint64(k)
+		
+		ok := li >= expireAt
+		ok = ok || (li-secDay) <= expireAt
+		
+		if !ok {
+			// File too late!
+			// use li (currentFile + 1 (expires one second later) )
+			return bkt.Put(expb[:],expb[:])
+		}
+		fi = li /* Use the next found file! */
+		
+		return nil
+	})
+	return
+}
+
+
+// The old algorithm behind s.Insert(...)
+// unused for now...
+func (s *Store) insert_1(k, v []byte, expireAt uint64) error {
+	ok,err := s.DB.Has(k,nil)
+	if ok && err==nil { return EExist }
+	tfn,err := s.Alloc.AllocateTimeFile(expireAt)
+	if err!=nil { return err }
+	ce := s.files.get(tfn)
+	if ce==nil { return EFalse }
+	defer ce.release()
+	pos,err := ce.value.(*iFile).AppendMz(v,s.MaxSizePerFile)
+	if err!=nil { return err }
+	
+	return s.DB.Put(k,storeHeader{tfn,pos,int32(len(v))}.encode(),wopt)
+}
+
+

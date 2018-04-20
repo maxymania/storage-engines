@@ -39,6 +39,7 @@ import (
 var (
 	EExist = errors.New("EExist")
 	ENotFound = ldb_errors.ErrNotFound
+	EOverSize = errors.New("EOverSize")
 )
 
 type Getter interface{
@@ -80,6 +81,20 @@ func (i *iFile) Unwrap_os_File() *os.File { return i.File }
 func (i *iFile) Release() {
 	i.Close()
 }
+func (i *iFile) AppendMz(b []byte,max int64) (int64,error) {
+	if max<=0 { return i.Append(b) }
+	i.lock.Lock(); defer i.lock.Unlock()
+	cur := i.length
+	nwl := cur + int64(len(b))
+	if nwl>max { return 0,EOverSize }
+	_,e := i.WriteAt(b,cur)
+	if e!=nil {
+		i.Truncate(cur) // Revert growth, if any!
+		return 0,e
+	}
+	i.length = nwl
+	return cur,nil
+}
 func (i *iFile) Append(b []byte) (int64,error) {
 	i.lock.Lock(); defer i.lock.Unlock()
 	cur := i.length
@@ -95,6 +110,8 @@ func (i *iFile) Append(b []byte) (int64,error) {
 type Store struct{
 	Alloc *Allocator
 	DB    *leveldb.DB
+	MaxSizePerFile int64 // Maximum file size or 0
+	MaxDayOffset   int   // Maximum days of later expiration
 	files cCache
 }
 func (s *Store) getfile(k interface{}) Releaser {
@@ -127,18 +144,52 @@ func (s *Store) CleanupInstance() {
 var wopt = &opt.WriteOptions{ Sync:false, }
 
 func (s *Store) Insert(k, v []byte, expireAt uint64) error {
+	return s.insert_2(k, v, expireAt)
+}
+
+func (s *Store) insert_2(k, v []byte, expireAt uint64) error {
+	
 	ok,err := s.DB.Has(k,nil)
 	if ok && err==nil { return EExist }
 	tfn,err := s.Alloc.AllocateTimeFile(expireAt)
-	if err!=nil { return err }
-	ce := s.files.get(tfn)
-	if ce==nil { return EFalse }
-	defer ce.release()
-	pos,err := ce.value.(*iFile).Append(v)
-	if err!=nil { return err }
+	nExp := expireAt
 	
-	return s.DB.Put(k,storeHeader{tfn,pos,int32(len(v))}.encode(),wopt)
+	cnt := 0
+	dayoff := 0
+	
+	for {
+		
+		if err!=nil { return err }
+		ce := s.files.get(tfn)
+		if ce==nil { return EFalse }
+		defer ce.release()
+		pos,err := ce.value.(*iFile).AppendMz(v,s.MaxSizePerFile)
+		if err==EOverSize {
+			for {
+				if cnt>128 { return err } /* Limit the iterations! */
+				if dayoff>s.MaxDayOffset { return err } /* Maximum day-offset reached! */
+				tfn,err = s.Alloc.GrabAnotherFile(nExp,tfn)
+				cnt++
+				if err==EOptionsExhausted {
+					/* nExp += secDay // Bump the expiration date */
+					
+					// Bump the expiration date by 1 day.
+					nExp = trunci(nExp+secDay,secDay) + (60*60)
+					dayoff++
+					continue
+				}
+				if err!=nil { return err }
+				break
+			}
+			continue
+		}
+		if err!=nil { return err }
+		
+		return s.DB.Put(k,storeHeader{tfn,pos,int32(len(v))}.encode(),wopt)
+	}
+	panic("unreachable")
 }
+
 func (s *Store) Get(key []byte, value Getter) error {
 	//defer s.CleanupInstance()
 	pos,err := s.DB.Get(key,nil)

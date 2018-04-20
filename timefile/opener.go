@@ -73,6 +73,8 @@ type Options struct{
 	Index *opt.Options  // Options for the index DB, or nil for default.
 	Alloc *bolt.Options // Options for the allocator DB, or nil for default.
 	Files int           // Approximate number of open files, or 0 for default.
+	MaxSizePerFile int64 // Maximum file size or 0
+	MaxDayOffset   int   // Maximum days of later expiration
 }
 
 var defOptions = Options{
@@ -103,6 +105,8 @@ func OpenStore(base string,opt *Options) (*Store,error){
 	s.Alloc.Path = base
 	s.Alloc.DB = b
 	s.DB = l
+	s.MaxSizePerFile = lopt.MaxSizePerFile
+	s.MaxDayOffset   = lopt.MaxDayOffset
 	s.Init(lopt.Files)
 	
 	return s,e
