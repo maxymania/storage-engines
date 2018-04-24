@@ -38,14 +38,24 @@ const (
 	RDWR   = mmap.RDWR
 )
 
+/*
+This object represents a memory-mapped file (or a region of such a file). The
+file must be pre-allocated to a fixed size.
+
+To initialize it properly, first .Map or .MapRegion must be successfully called.
+Then, .Format() or .Load() must be called.
+
+.Format() is called to truncate the Chunk.
+*/
 type Chunk struct {
 	Position int64
 	Size int64
 	Snapshots[8] int64
 	Mmap mmap.MMap
 	Fobj *os.File
-	
 }
+// Makes a persistent snapshot of the Chunk's current position.
+// By the way it also fsync()s the underlying file, if any.
 func (c *Chunk) Snapshot() {
 	pos := atomic.LoadInt64(&(c.Position))
 	siz := c.Snapshots[0]
@@ -69,12 +79,15 @@ func (c *Chunk) Format() {
 	if c.Fobj!=nil { c.Fobj.Sync() }
 }
 func (c *Chunk) Load() {
-	c.Position = 0
+	pos := int64(0)
 	for i := range c.Snapshots {
 		L := int64(binary.BigEndian.Uint64(c.Mmap[i*8:]))
 		c.Snapshots[i] = L
-		if c.Position < L { c.Position = L }
+		if pos < L { pos = L }
 	}
+	if pos<8*8 { pos = 8*8 }
+	atomic.StoreInt64(&(c.Position),pos)
+	if pos>c.Size { c.SetLast(pos) }
 }
 func (c *Chunk) GetCommitted() (mem []byte,start int64) {
 	mem = c.Mmap[:c.Position]

@@ -126,6 +126,7 @@ func DecodeRecord(start []byte) (record, key, value []byte, err error) {
 	return
 }
 
+// Splits a record into a key-value pair. The function assumes, that the record is valid.
 func SplitRecord(record []byte) (k,v []byte) {
 	keyl := int(binary.BigEndian.Uint16(record[4:]))
 	return record[8:8+keyl],record[8+keyl:]

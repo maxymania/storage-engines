@@ -99,6 +99,14 @@ type DB struct{
 	tree iTree
 	tlck sync.RWMutex
 }
+
+/*
+This method initializes the search-tree and loads the Database.
+
+".Ty" must be set to T_Sorted or T_Hashed (or a custom implementation).
+
+".Ch" must be set to a properly initialized *Chunk-object.
+*/
 func (db *DB) Open(flags LoadFlags) {
 	if flags.has(L_USE_AVL_TREE) {
 		db.tree = avl.NewWith(db.Ty.Comp)
