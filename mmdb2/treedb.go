@@ -211,7 +211,7 @@ func (db *DB) Put(key, value []byte) (err error) {
 }
 
 /*
-Obtains a record.
+Obtains a record object (*Value).
 
 The argument "synced" is handled as follows:
 	if synced {
@@ -235,11 +235,21 @@ func (db *DB) GetRecord(key []byte, synced bool) (v *Value,ok bool) {
 	if ok { v = *vv }
 	return
 }
-func (db *DB) Get(key []byte, synced bool) (okey,value []byte,ok bool) {
+/*
+Obtains a value. The memory mapped version of its key is also returned.
+
+The argument "synced" is handled as follows:
+	if synced {
+		ptr = atomic.LoadPointer(&(db.tree))
+	} else {
+		ptr = db.tree
+	}
+*/
+func (db *DB) Get(key []byte, synced bool) (mkey,value []byte,ok bool) {
 	var v *Value
 	v, ok = db.GetRecord(key,synced)
 	if ok {
-		okey = v.GKey()
+		mkey = v.GKey()
 		value = v.GValue()
 	}
 	return
