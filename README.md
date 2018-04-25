@@ -7,4 +7,5 @@ Open Storage Engines
 * Timefile Blob storage engine [![GoDoc](https://godoc.org/github.com/maxymania/storage-engines/timefile?status.svg)](https://godoc.org/github.com/maxymania/storage-engines/timefile)
 * Record oriented table with indeces. [![GoDoc](https://godoc.org/github.com/maxymania/storage-engines/idxtable?status.svg)](https://godoc.org/github.com/maxymania/storage-engines/idxtable)
 * Memory-mapped log structured database with in-memory index. [![GoDoc](https://godoc.org/github.com/maxymania/storage-engines/mmdb?status.svg)](https://godoc.org/github.com/maxymania/storage-engines/mmdb)
+* A lock-free memory-mapped, log-structured db. [![GoDoc](https://godoc.org/github.com/maxymania/storage-engines/mmdb2?status.svg)](https://godoc.org/github.com/maxymania/storage-engines/mmdb2)
 
