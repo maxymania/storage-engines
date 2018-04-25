@@ -119,7 +119,13 @@ func (db *DB) load() {
 		
 		v.sHash(db.hash(v.GKey()))
 		
-		if oo := t.Get(vv); oo!=nil {
+		// Empty value means removal
+		if len(v.GValue())==0 {
+			/* Touch the treap, only if it already contains this item. */
+			if t.Get(vv)!=nil {
+				t = t.Delete(vv)
+			}
+		} else if oo := t.Get(vv); oo!=nil {
 			(*(oo.(**Value))) = v
 		} else {
 			/*
@@ -154,7 +160,15 @@ func (db *DB) indexRecord(record []byte) (err error){
 	ptr := atomic.LoadPointer(&(db.tree))
 	tree := (*gtreap.Treap)(ptr)
 	
-	if oo := tree.Get(vv); oo!=nil {
+	if len(v.GValue())==0 {
+		/* Touch the treap, only if it already contains this item. */
+		if tree.Get(vv)!=nil {
+			tree = tree.Delete(vv)
+			nptr := unsafe.Pointer(tree)
+			if !atomic.CompareAndSwapPointer(&(db.tree),ptr,nptr) { goto restart }
+		}
+		/* Free(vv) */
+	} else if oo := tree.Get(vv); oo!=nil {
 		(*(oo.(**Value))) = v
 		/* Free(vv) */
 	} else {
@@ -197,8 +211,7 @@ func (db *DB) Put(key, value []byte) (err error) {
 }
 
 /*
-Obtains a record. This is a low-level function, that might return a tombstone
-(where the value is empty), while still claiming a successful load.
+Obtains a record.
 
 The argument "synced" is handled as follows:
 	if synced {
@@ -228,7 +241,6 @@ func (db *DB) Get(key []byte, synced bool) (okey,value []byte,ok bool) {
 	if ok {
 		okey = v.GKey()
 		value = v.GValue()
-		if len(value)==0 { return nil,nil,false } /* Preserve the old behavoir */
 	}
 	return
 }
