@@ -98,6 +98,10 @@ func StrkeyPrefixRange(b,e []byte) *Strkey {
 	return &Strkey{b,e,SK_PrefixRangeMatch}
 }
 
+
+var _ msgpack.CustomEncoder = (*Strkey)(nil)
+var _ msgpack.CustomDecoder = (*Strkey)(nil)
+
 func (s *Strkey) String() string {
 	suffix := "$"
 	if s.hasFlags(iSK_PrefixMatch) { suffix = ".*" }
