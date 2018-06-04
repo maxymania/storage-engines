@@ -85,9 +85,12 @@ type iFile struct{
 	*os.File
 	length int64
 	lock sync.Mutex
+	klist *kArray
+	k uint64
 }
 func (i *iFile) Unwrap_os_File() *os.File { return i.File }
 func (i *iFile) Release() {
+	i.klist.remove(i.k,i)
 	i.Close()
 }
 func (i *iFile) AppendMz(b []byte,max int64) (int64,error) {
@@ -122,6 +125,7 @@ type Store struct{
 	MaxSizePerFile int64 // Maximum file size or 0
 	MaxDayOffset   int   // Maximum days of later expiration
 	files lCache
+	klist kArray
 }
 func (s *Store) getfile(k uint64) cache.Value {
 	fn := s.Alloc.GetPath(k)
@@ -130,14 +134,18 @@ func (s *Store) getfile(k uint64) cache.Value {
 	r := new(iFile)
 	r.File = f
 	r.length,e = f.Seek(0,2)
+	r.klist = &s.klist
+	r.k = k
 	if e!=nil {
 		f.Close()
 		return nil
 	}
+	r.klist.insert(k,r)
 	return r
 }
 func (s *Store) Init(size int) {
 	if size<=0 { size = 1024 }
+	s.klist.init()
 	s.files.init(size,s.getfile)
 }
 
@@ -146,6 +154,9 @@ func (s *Store) Init(size int) {
 func (s *Store) CleanupInstance() {
 	// Erase handles of expired files. This allow the FS to reclaim disk space, if they are unkink()-ed.
 	s.files.EvictAll()
+	for _,e := range s.klist.until(current,1<<16) {
+		s.files.remove(e)
+	}
 	//for _,e := range s.files.keys() {
 	//	if (e.(uint64))<current { s.files.remove(e) }
 	//}
