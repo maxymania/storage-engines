@@ -153,7 +153,6 @@ func (s *Store) Init(size int) {
 // This allow the FS to reclaim disk space, if they are unkink()-ed.
 func (s *Store) CleanupInstance() {
 	// Erase handles of expired files. This allow the FS to reclaim disk space, if they are unkink()-ed.
-	s.files.EvictAll()
 	for _,e := range s.klist.until(current,1<<16) {
 		s.files.remove(e)
 	}
