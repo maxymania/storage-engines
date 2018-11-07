@@ -91,26 +91,26 @@ func (m *Message) getDecoder(r io.Reader) *msgpack.Decoder {
 func (m *Message) ReadRequest(br *bufio.Reader) error {
 	dec := m.getDecoder(br)
 	defer dec.Reset(empty_) /* Unwire the stream, help the GC. */
-	return dec.Decode(&m.Type,&m.Id,&m.Exp,&m.Payload)
+	return dec.DecodeMulti(&m.Type,&m.Id,&m.Exp,&m.Payload)
 }
 
 // WriteResponse must write response to bw.
 func (m *Message) WriteResponse(bw *bufio.Writer) error {
 	enc := msgpack.NewEncoder(bw)
-	return enc.Encode( m.Ok , m.Payload)
+	return enc.EncodeMulti( m.Ok , m.Payload)
 }
 
 // ReadResponse must read response from br.
 func (m *Message) ReadResponse(br *bufio.Reader) error {
 	dec := m.getDecoder(br)
 	defer dec.Reset(empty_) /* Unwire the stream, help the GC. */
-	return dec.Decode(&m.Ok ,&m.Payload)
+	return dec.DecodeMulti(&m.Ok ,&m.Payload)
 }
 
 // WriteRequest must write request to bw.
 func (m *Message) WriteRequest(bw *bufio.Writer) error {
 	enc := msgpack.NewEncoder(bw)
-	return enc.Encode( m.Type, m.Id, m.Exp, m.Payload)
+	return enc.EncodeMulti( m.Type, m.Id, m.Exp, m.Payload)
 }
 
 var (

@@ -42,10 +42,10 @@ type Element struct{
 	Ptr int64
 }
 func (e *Element) EncodeMsgpack(dst *msgpack.Encoder) error {
-	return dst.Encode(e.P,e.Data,e.Ptr)
+	return dst.EncodeMulti(e.P,e.Data,e.Ptr)
 }
 func (e *Element) DecodeMsgpack(src *msgpack.Decoder) error {
-	return src.Decode(e.P,&e.Data,&e.Ptr)
+	return src.DecodeMulti(e.P,&e.Data,&e.Ptr)
 }
 
 var _ msgpack.CustomEncoder = (*Element)(nil)

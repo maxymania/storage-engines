@@ -29,8 +29,8 @@ import "github.com/vmihailenco/msgpack"
 type pair struct{
 	Key,Value []byte
 }
-func (p *pair) DecodeMsgpack(dec *msgpack.Decoder) error { return dec.Decode(&p.Key,&p.Value) }
-func (p *pair) EncodeMsgpack(enc *msgpack.Encoder) error { return enc.Encode(p.Key,p.Value) }
+func (p *pair) DecodeMsgpack(dec *msgpack.Decoder) error { return dec.DecodeMulti(&p.Key,&p.Value) }
+func (p *pair) EncodeMsgpack(enc *msgpack.Encoder) error { return enc.EncodeMulti(p.Key,p.Value) }
 
 
 type Client struct {

@@ -26,6 +26,7 @@ package timefiledist
 import timefile "github.com/maxymania/storage-engines/timefile2"
 import leveldb "github.com/maxymania/storage-engines/leveldbx"
 import "encoding/binary"
+import "github.com/byte-mug/golibs/msgpackx"
 import "github.com/vmihailenco/msgpack"
 import "io"
 import "github.com/syndtr/goleveldb/leveldb/util"
@@ -135,7 +136,7 @@ func (h *HeadStorage) Handle(m *Message) *Message {
 			}
 		}
 		if len(v1)>=16 {
-			data,_ := msgpack.Marshal(false,binary.BigEndian.Uint64(v1))
+			data,_ := msgpackx.Marshal(false,binary.BigEndian.Uint64(v1))
 			m.SetPayload(data)
 		}
 	case "read":
