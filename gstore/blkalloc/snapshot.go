@@ -64,10 +64,12 @@ func (r *SnapshotAlloc) reduce() {
 		r.snapshots.Remove(f)
 	}
 }
+// Release a snapshot.
 func (r *SnapshotAlloc) Release(e *list.Element) {
 	e.Value.(*snapshot).refs--
 	r.reduce()
 }
+// Obtain a snapshot. Don't inspect the list!
 func (r *SnapshotAlloc) Obtain() *list.Element {
 	e := r.snapshots.Back()
 	e.Value.(*snapshot).refs++
