@@ -23,10 +23,44 @@ SOFTWARE.
 
 package gstore
 
-//import "github.com/cznic/file"
-//import "github.com/maxymania/storage-engines/gstore/blockmgr"
-//import "github.com/maxymania/storage-engines/gstore/freelist"
+import "github.com/cznic/file"
+import "github.com/vmihailenco/msgpack"
 
+type header struct{
+	P1 uint64
+	P2 uint64
+	Tables map[string]uint64
+}
 
+type fileWriter struct{
+	file.File
+	pos int64
+}
+func (f *fileWriter) Write(p []byte) (n int, err error) {
+	n,err = f.WriteAt(p,f.pos)
+	f.pos += int64(n)
+	return
+}
+func (f *fileWriter) cut() error { return f.Truncate(f.pos) }
 
+func (h *header) write(f file.File) error {
+	w := &fileWriter{f,0}
+	err := msgpack.NewEncoder(w).Encode(h)
+	if err!=nil { return err }
+	return w.cut()
+}
+
+type fileReader struct{
+	file.File
+	pos int64
+}
+func (f *fileReader) Read(p []byte) (n int, err error) {
+	n,err = f.ReadAt(p,f.pos)
+	f.pos += int64(n)
+	return
+}
+
+func (h *header) read(f file.File) error {
+	return msgpack.NewDecoder(&fileReader{f,0}).Decode(h)
+}
 
