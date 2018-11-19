@@ -23,24 +23,55 @@ SOFTWARE.
 
 package gstore
 
-import "github.com/cznic/file"
-import "github.com/maxymania/storage-engines/gstore/blockmgr"
-import "github.com/maxymania/storage-engines/gstore/freelist"
+import "github.com/davecgh/go-xdr/xdr2"
+import "bytes"
+import "errors"
 
-type File struct{
-	bm blockmgr.BlockManager
-	fl freelist.Allocator
-	al *file.WAL
-	th header
+var errOverflow = errors.New("overflow")
+
+type bwriter struct{
+	targ []byte
+	pos  int
 }
-func (f *File) Init(f, w file.File, bm blockmgr.BlockManager,blocklog uint) (err error) {
-	f.al,err = file.NewWAL(f, w, 0, 9) ; if err!=nil { return }
-	err = f.th.read(f.al) ; if err!=nil { return }
-	
-	f.bm = bm
-	f.fl.Init(bm,blocklog,th.P1,th.P2)
-	return
+func (b *bwriter) rest() int {
+	return len(b.targ)-b.pos
+}
+func (b *bwriter) Write(p []byte) (int,error) {
+	if len(p)>=b.rest() { return 0,errOverflow }
+	copy(b.targ[b.pos:],p)
+	b.pos += len(p)
+	return len(p),nil
+}
+func (b *bwriter) WriteString(p string) (int,error) {
+	if len(p)>=b.rest() { return 0,errOverflow }
+	copy(b.targ[b.pos:],p)
+	b.pos += len(p)
+	return len(p),nil
+}
+func (b *bwriter) WriteByte(p byte) error {
+	if 0>=b.rest() { return errOverflow }
+	b.targ[b.pos] = p
+	b.pos++
+	return nil
 }
 
+var align = [4]int{0,3,2,1}
 
-// ----
+type Pair struct{
+	Key []byte
+	Ref uint64
+}
+func (p Pair) Length() int {
+	l := len(p.Key)
+	return l+4+8+align[l&3]
+}
+type Pairs []Pair
+
+func (p *Pairs) read(b []byte) error {
+	_,err := xdr.Unmarshal(bytes.NewReader(b),p)
+	return err
+}
+func (p Pairs) write(b []byte) error {
+	_,err := xdr.Marshal(&bwriter{b,0},p)
+	return err
+}
