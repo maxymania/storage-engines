@@ -75,6 +75,7 @@ type alloclist struct{
 	ba,bf   uint64
 	free    []uint64 // ready to use
 	dump    []uint64 // ready to recycle
+	exthausted []uint64
 }
 
 func (a *alloclist) addTail(offset uint64,lng int) {
@@ -100,6 +101,7 @@ restart:
 		}
 		blk,e := a.bmr.ReadBlock(a.ba)
 		if e!=nil { return 0,e }
+		oba := a.ba
 		var nba uint64
 		var nf []uint64
 		dec := msgpack.NewDecoder(bytes.NewReader(blk))
@@ -108,6 +110,7 @@ restart:
 		if e!=nil { return 0,e }
 		a.free = append(a.free,nf...)
 		a.ba = nba
+		a.exthausted = append(a.exthausted,oba)
 		goto restart
 	}
 	ptr := a.free[0]
@@ -179,6 +182,8 @@ func (a *alloclist) writeback() error {
 	BZ := a.blksize-18
 	var rb []uint64
 	var bb [][]uint64
+	a.dump = append(a.exthausted,a.dump...)
+	a.exthausted = nil
 	for {
 		if len(a.dump)==0 { break }
 		h := 0
