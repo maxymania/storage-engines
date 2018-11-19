@@ -86,6 +86,11 @@ func (a *Allocator) ReleaseSnapshot(sn Snapshot) {
 	a.reduce()
 }
 func (a *Allocator) Flush() error {
+	{
+		t := a.txs.Back().Value.(*txnref)
+		t.defs = append(t.defs,a.exthausted...)
+		for _,e := range a.exthausted { a.exclude[e]=true }
+	}
 	a.txs.PushBack(new(txnref))
 	a.reduce()
 	e1 := a.writeback()
