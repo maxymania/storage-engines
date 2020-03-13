@@ -21,7 +21,15 @@ SOFTWARE.
 */
 
 
+/*
+Implements IO-Primitives for page-based tables.
 
+MMAP-support is not builtin by default. Instead, if MMAP is desired,
+a plugin-package must be imported. Note that this plugin is not supported
+on certain platforms like plan9.
+
+	import _ "github.com/maxymania/storage-engines/pagedfile/mmap"
+*/
 package pagedfile
 
 import (
@@ -44,6 +52,9 @@ const (
 	// It also means that it is (potentially) shared
 	// across concurrent readers and MUST not be
 	// modified by them.
+	//
+	// In order for F_MMAP to have any effect you need to
+	// import _ "github.com/maxymania/storage-engines/pagedfile/mmap"
 	F_MMAP
 )
 
@@ -55,6 +66,9 @@ func has(flags, flag uint) bool {
 	return (flags&flag)!=0
 }
 
+/*
+Don't use this interface. Expect changes, that will break your stuff.
+*/
 type MmapLoader interface{
 	Read(offset int64,size int) (bool,[]byte)
 	Write(buf []byte,offset int64) bool
