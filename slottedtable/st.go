@@ -42,7 +42,13 @@ import "github.com/maxymania/storage-engines/buffer"
 
 var ErrOverflow = errors.New("Overflow: record consumes too much space in page")
 
+// A Tuple-ID identifies a record's physical location within the table file.
+// It is represented as '(block-id,record-id)', where the 'block-id' is the
+// location of the block within the table file, and 'record-id' is the
+// block-local record number.
 type TID [2]int64
+
+// A Block-range identifies a range of blocks.
 type BRange [2]int64
 
 type Record struct {
