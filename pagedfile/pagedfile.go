@@ -117,6 +117,11 @@ func NewPagedFile(f *os.File, psz int, flags uint) (*PagedFile,error) {
 	return p,nil
 }
 
+// Returns true, if, and only if this paged file has a mmap-loader.
+// If this paged file is not MMAPed, this returns false.
+func (f *PagedFile) HasMMAP() bool {
+	return f.mmapLdr!=nil
+}
 func (f *PagedFile) EnsureSize(blocks int64) (int64,error) {
 	if f.NBlocks==0 {
 		siz,err := f.length()
@@ -208,11 +213,13 @@ func (f *PagedFile) write(buf []byte,idx int64) (error) {
 	return err
 }
 // Syncs the MMAP writer.
+// If this paged file is not MMAPed, this has no effect.
 func (f *PagedFile) Msync() {
 	if f.mmapLdr==nil { return }
 	f.mmapLdr.Sync()
 }
 // Closes/frees the MMAP resources.
+// If this paged file is not MMAPed, this has no effect.
 func (f *PagedFile) Mclose() {
 	if f.mmapLdr==nil { return }
 	f.mmapLdr.Close()
