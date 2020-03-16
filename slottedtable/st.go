@@ -103,13 +103,24 @@ func NewSlottedTable(pf *pagedfile.PagedFile) (st *SlottedTable,err error) {
 
 const (
 	// Memory-Map the file, if possible.
-	// It also that it is (potentially) shared
+	// It means that it is (potentially) shared
 	// across concurrent readers and MUST not be
 	// modified by them.
 	//
 	// In order for F_MMAP to have any effect you need to
 	// import _ "github.com/maxymania/storage-engines/pagedfile/mmap"
 	F_MMAP = pagedfile.F_MMAP
+	
+	// Cache the pages, if possible.
+	// It means that it is (potentially) shared
+	// across concurrent readers and MUST not be
+	// modified by them.
+	//
+	// In order for F_CACHE to have any effect you need to
+	// import _ "github.com/maxymania/storage-engines/pagedfile/cache"
+	// this cache plugin uses "github.com/syndtr/goleveldb/leveldb/cache"
+	// as a backend, which is why I keep it seperate.
+	F_CACHE = pagedfile.F_CACHE
 )
 
 func NewSlottedTableFile(f *os.File,psz int, flags uint) (st *SlottedTable,err error) {

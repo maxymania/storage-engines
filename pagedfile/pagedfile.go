@@ -39,6 +39,7 @@ import (
 	"os"
 	//"io"
 	"errors"
+	"fmt"
 )
 
 const (
@@ -56,15 +57,55 @@ const (
 	// In order for F_MMAP to have any effect you need to
 	// import _ "github.com/maxymania/storage-engines/pagedfile/mmap"
 	F_MMAP
+	
+	// Cache the pages, if possible.
+	// It means that it is (potentially) shared
+	// across concurrent readers and MUST not be
+	// modified by them.
+	//
+	// In order for F_CACHE to have any effect you need to
+	// import _ "github.com/maxymania/storage-engines/pagedfile/cache"
+	// this cache plugin uses "github.com/syndtr/goleveldb/leveldb/cache"
+	// as a backend, which is why I keep it seperate.
+	F_CACHE
 )
 
 var (
 	ErrBlockTooShort = errors.New("Block too short")
 )
 
+func debug(i ...interface{}) {
+	fmt.Println(i...)
+}
+
 func has(flags, flag uint) bool {
 	return (flags&flag)!=0
 }
+
+type Releaser interface{
+	Release()
+}
+
+type byterel []byte
+func (b *byterel) Release() {
+	buffer.Put((*[]byte)(b))
+}
+func asRel(buf *[]byte) Releaser { return (*byterel)(buf) }
+func asBytes(rel Releaser,lng int) []byte {
+	return (*(rel.(*byterel)))[:lng]
+}
+
+/*
+Don't use this interface. Expect changes, that will break your stuff.
+*/
+type PageCache interface{
+	Get(i int64) (outer,inner Releaser)
+	Put(i int64,size int,supp Releaser) (outer,inner Releaser,used bool)
+	Invalidate(i int64)
+	Clear()
+}
+
+var PageCacheNew func() (PageCache,error)
 
 /*
 Don't use this interface. Expect changes, that will break your stuff.
@@ -80,12 +121,15 @@ var MmapNew func(f *os.File) (MmapLoader,error)
 
 type Page struct{
 	alloc *[]byte
+	relsr Releaser
 	buf []byte
 }
 func (p *Page) Release() {
 	p.buf = nil
 	if p.alloc!=nil { buffer.Put(p.alloc) }
 	p.alloc = nil
+	if p.relsr!=nil { p.relsr.Release() }
+	p.relsr = nil
 }
 func (p *Page) Bytes() []byte {
 	return p.buf
@@ -97,6 +141,7 @@ type PagedFile struct{
 	NBlocks  int64
 	
 	mmapLdr  MmapLoader
+	pageChc  PageCache
 }
 func NewPagedFile(f *os.File, psz int, flags uint) (*PagedFile,error) {
 	p := new(PagedFile)
@@ -113,6 +158,11 @@ func NewPagedFile(f *os.File, psz int, flags uint) (*PagedFile,error) {
 		l.NotifySize(p.NBlocks*int64(p.Pagesize))
 		p.mmapLdr = l
 	}
+	if has(flags,F_CACHE) && PageCacheNew!=nil && p.mmapLdr==nil {
+		c,err :=  PageCacheNew()
+		if err!=nil { return nil,err }
+		p.pageChc = c
+	}
 	
 	return p,nil
 }
@@ -122,6 +172,13 @@ func NewPagedFile(f *os.File, psz int, flags uint) (*PagedFile,error) {
 func (f *PagedFile) HasMMAP() bool {
 	return f.mmapLdr!=nil
 }
+
+// Returns true, if, and only if this paged file has a cache.
+// If this paged file is not cached, this returns false.
+func (f *PagedFile) HasCACHE() bool {
+	return f.pageChc!=nil
+}
+
 func (f *PagedFile) EnsureSize(blocks int64) (int64,error) {
 	if f.NBlocks==0 {
 		siz,err := f.length()
@@ -160,6 +217,7 @@ func (f *PagedFile) length() (int64,error) {
 
 func (f *PagedFile) Read(idx int64) (*Page,error) {
 	ok,pag,err := f.readMmap(idx)
+	if !ok { ok,pag,err = f.readCache(idx) }
 	if !ok { pag,err = f.read(idx) }
 	return pag,err
 }
@@ -174,6 +232,39 @@ func (f *PagedFile) readMmap(idx int64) (bool,*Page,error) {
 	
 	return true,p,nil
 }
+func (f *PagedFile) readCache(idx int64) (bool,*Page,error) {
+	if f.pageChc==nil { return false,nil,nil }
+	if idx<0 { return true,nil,nil }
+	
+	outer,inner := f.pageChc.Get(idx)
+	if outer==nil {
+		page := buffer.Get(f.Pagesize)
+		buf := (*page)[:f.Pagesize]
+		
+		//debug("Read Block",idx)
+		n,err := f.File.ReadAt(buf,idx*int64(f.Pagesize))
+		if n<f.Pagesize && err==nil {
+			err = ErrBlockTooShort
+		}
+		if err!=nil {
+			buffer.Put(page)
+			return true,nil,err
+		}
+		if n<f.Pagesize {
+			panic(ErrBlockTooShort)
+		}
+		
+		var used bool
+		outer,inner,used = f.pageChc.Put(idx,f.Pagesize,asRel(page))
+		if !used { buffer.Put(page) }
+	}
+	
+	p := new(Page)
+	p.relsr = outer
+	p.buf = asBytes(inner,f.Pagesize)
+	
+	return true,p,nil
+}
 func (f *PagedFile) read(idx int64) (*Page,error) {
 	if idx<0 { return nil,nil }
 	
@@ -181,6 +272,7 @@ func (f *PagedFile) read(idx int64) (*Page,error) {
 	p.alloc = buffer.Get(f.Pagesize)
 	p.buf = (*p.alloc)[:f.Pagesize]
 	
+	//debug("Read Block",idx)
 	n,err := f.File.ReadAt(p.buf,idx*int64(f.Pagesize))
 	
 	if n<f.Pagesize && err==nil {
@@ -210,6 +302,7 @@ func (f *PagedFile) writeMmap(buf []byte,idx int64) (bool,error) {
 func (f *PagedFile) write(buf []byte,idx int64) (error) {
 	if len(buf)>f.Pagesize { buf = buf[:f.Pagesize] }
 	_,err := f.File.WriteAt(buf,idx*int64(f.Pagesize))
+	if f.pageChc!=nil { f.pageChc.Invalidate(idx) }
 	return err
 }
 // Syncs the MMAP writer.
@@ -223,4 +316,11 @@ func (f *PagedFile) Msync() {
 func (f *PagedFile) Mclose() {
 	if f.mmapLdr==nil { return }
 	f.mmapLdr.Close()
+}
+
+// Clears the block cache for this file.
+// If this paged file is not cached (F_CACHE), this has no effect.
+func (f *PagedFile) ClearCache() {
+	if f.pageChc==nil { return }
+	f.pageChc.Clear()
 }
