@@ -75,6 +75,13 @@ Is used to filter records. Returns false, if a record should be dropped.
 type FilterFunc func(tid TID,rec []byte) bool
 
 /*
+Is used to update records. Returns false and nil, if a record should be dropped.
+Returns the true and the new value for the record otherwise.
+If the record should not be updated, it returns rec.
+*/
+type UpdateFunc func(tid TID,rec []byte) (bool,[]byte)
+
+/*
 Warning: This interface is not meant for direct use.
 Expect breaking changes.
 */
@@ -197,7 +204,7 @@ func (st *SlottedTable) InsertInBlock(bid int64,rec []byte) (tid TID,err error) 
 	
 	tid[1] = lastid+1
 	
-	raw := buffer.CGet(st.Store.Pagesize)
+	raw := buffer.CGet(st.Store.Pagesize*2)
 	defer buffer.Put(raw)
 	buf := bytes.NewBuffer((*raw)[:st.Store.Pagesize])
 	buf.Reset()
@@ -273,6 +280,50 @@ func (st *SlottedTable) FilterBlock(bid int64,filt FilterFunc) (err error) {
 	return
 }
 
+func (st *SlottedTable) UpdateBlock(bid int64,updf UpdateFunc) (err error) {
+	defer st.writer()()
+	defer st.Locker.WLock(bid)()
+	var page *pagedfile.Page
+	var tid TID
+	
+	tid[0] = bid
+	
+	page,err = st.Store.Read(bid)
+	if err!=nil { return }
+	defer page.Release()
+	
+	raw := buffer.CGet(st.Store.Pagesize*2)
+	defer buffer.Put(raw)
+	buf := bytes.NewBuffer((*raw)[:st.Store.Pagesize])
+	buf.Reset()
+	
+	dec := msgpack.NewDecoder(newReader(page.Bytes()))
+	enc := msgpack.NewEncoder(buf)
+	
+	for {
+		id2,rec,err2 := readRecord(dec)
+		if err2==ErrHashError { continue } // If corrupted, drop the record.
+		if err2!=nil { break }
+		tid[1] = id2
+		ok,rec := updf(tid,rec)
+		if !ok { continue } // If filter returns false, drop the record.
+		
+		enc.EncodeInt64(id2)
+		enc.EncodeBytes(rec)
+		enc.EncodeUint64(hashBuf(rec))
+	}
+	if buf.Len()>st.Store.Pagesize {
+		err = ErrOverflow
+		return
+	}
+	
+	// The rest of the buffer is zeroed out anyways. So there is
+	// no need to add padding.
+	
+	err = st.Store.Write((*raw)[:st.Store.Pagesize],bid)
+	return
+}
+
 // Msyncs the changes to the filesystem, if the table is MMAPed.
 // If the table is not MMAPed, this method has no effect.
 func (st *SlottedTable) Msync() {
@@ -282,5 +333,21 @@ func (st *SlottedTable) Msync() {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	st.Store.Msync()
+}
+
+// Measures the space occupied by valid records.
+func (st *SlottedTable) Measure(bid int64) (size int,err error) {
+	defer st.Locker.RLock(bid)()
+	var page *pagedfile.Page
+	var siz int64
+	
+	page,err = st.Store.Read(bid)
+	if err!=nil { return }
+	defer page.Release()
+	
+	siz,_,err = measure(page.Bytes())
+	
+	size = int(siz)
+	return
 }
 
