@@ -30,6 +30,16 @@ package toast
 import slt "github.com/maxymania/storage-engines/slottedtable"
 import "sync/atomic"
 import "io"
+import "fmt"
+
+func debug(i ...interface{}) {
+	fmt.Println(i...)
+}
+
+func updateMinStat(m *int64,i int64) {
+	n := *m
+	if n<0||n>i { *m = i }
+}
 
 func getPos(i *int64) int64 {
 	return atomic.LoadInt64(i)
@@ -38,6 +48,13 @@ func increasePos(i *int64,n int64) {
 	for {
 		d := atomic.LoadInt64(i)
 		if d>=n { return }
+		if atomic.CompareAndSwapInt64(i,d,n) { return }
+	}
+}
+func decreasePos(i *int64,n int64) {
+	for {
+		d := atomic.LoadInt64(i)
+		if d<=n { return }
 		if atomic.CompareAndSwapInt64(i,d,n) { return }
 	}
 }
@@ -122,6 +139,7 @@ func (t *Toaster) write(r *slt.BRange, bya []byte) (tid slt.TID,level int,err er
 		level++
 	}
 }
+
 func (t *Toaster) Read(tid slt.TID,level int,target io.Writer) (err error) {
 	return t.read(tid,level,target)
 }
@@ -138,6 +156,43 @@ func (t *Toaster) read(tid slt.TID,level int,target io.Writer) (err error) {
 	for _,ctid := range tids {
 		err = t.read(ctid,level-1,target)
 		if err!=nil { break }
+	}
+	return
+}
+
+func (t *Toaster) del(set *slt.TIDSet, s *int64, tid slt.TID, level int) (err error) {
+	if level<1 { return }
+	
+	var rec *slt.Record
+	rec,err = t.inner.Read(tid)
+	if err!=nil { return }
+	tids := decodeList(rec.Bytes())
+	rec.Release()
+	for _,ctid := range tids {
+		err2 := t.del(set,s,ctid,level-1)
+		if err2!=nil { err = err2 }
+		updateMinStat(s,ctid[0])
+	}
+	set.Clear().AddAll(tids)
+	err2 := t.inner.DeleteAll(set)
+	if err2!=nil { err = err2 }
+	return
+}
+func (t *Toaster) del2(set *slt.TIDSet, s *int64, tid slt.TID, level int) (err error) {
+	err = t.del(set,s,tid,level)
+	set.Clear().Add(tid)
+	err2 := t.inner.DeleteAll(set)
+	updateMinStat(s,tid[0])
+	if err2!=nil { err = err2 }
+	return
+}
+func (t *Toaster) Delete(tid slt.TID, level int) (err error) {
+	s := new(int64)
+	*s = -1
+	err = t.del2(new(slt.TIDSet),s,tid,level)
+	if *s<0 { *s = 0 }
+	for i := range t.poses {
+		decreasePos(&t.poses[i],*s)
 	}
 	return
 }

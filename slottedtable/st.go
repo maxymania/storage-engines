@@ -39,6 +39,11 @@ import "github.com/vmihailenco/msgpack"
 import "errors"
 import "sync"
 import "github.com/maxymania/storage-engines/buffer"
+import "fmt"
+
+func debug(i ...interface{}) {
+	fmt.Println(i...)
+}
 
 var ErrOverflow = errors.New("Overflow: record consumes too much space in page")
 
@@ -51,16 +56,25 @@ type TID [2]int64
 // A Block-range identifies a range of blocks.
 type BRange [2]int64
 
+var pool_Record = sync.Pool{New:func()interface{}{ return new(Record) }}
+func AllocRecord() *Record { return pool_Record.Get().(*Record) }
+
 type Record struct {
 	blob []byte
 	page *pagedfile.Page
 	tid  TID
+	unlocker func()
 }
 func (r *Record) Bytes() []byte { return r.blob }
 func (r *Record) Release() {
 	if r.page!=nil {
 		r.page.Release()
 	}
+	if r.unlocker!=nil {
+		r.unlocker()
+	}
+	*r = Record{}
+	pool_Record.Put(r)
 }
 func (r *Record) TID() TID { return r.tid }
 
@@ -149,17 +163,23 @@ func (st *SlottedTable) writer() func() {
 	return st.mu.RUnlock
 }
 func (st *SlottedTable) Read(tid TID) (*Record,error) {
-	defer st.Locker.RLock(tid[0])()
+	tmp := AllocRecord()
+	defer tmp.Release()
+	
+	tmp.unlocker = st.Locker.RLock(tid[0])
 	page,err := st.Store.Read(tid[0])
 	if err!=nil { return nil,err }
+	tmp.page = page
 	dec := msgpack.NewDecoder(newReader(page.Bytes()))
 	
 	for {
 		i,blob,err := readRecord(dec)
-		if err!=nil { page.Release(); return nil,err }
+		if err!=nil { return nil,err }
 		if i<tid[1] { continue }
-		if i>tid[1] { page.Release(); return nil,io.EOF }
-		return &Record{blob,page,tid},nil
+		if i>tid[1] { return nil,io.EOF }
+		record := AllocRecord()
+		*record,*tmp = Record{blob,page,tid,tmp.unlocker},Record{}
+		return record,nil
 	}
 }
 func (st *SlottedTable) iterBlock(bid int64,iter IterFunc) (error,bool) {
